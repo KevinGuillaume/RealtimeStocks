@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 
+#@TODO Hardcoding this for now, but going to add frontend ability to push resources to client
 WATCHLIST = ["AAPL", "MSFT", "TSLA", "SPY"]
 
 app = FastAPI(title="RealtimeStocks API")

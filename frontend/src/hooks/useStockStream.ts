@@ -1,16 +1,16 @@
-import { useEffect, useRef, useState } from "react";
-import type { ConnectionStatus, StockMessage, SymbolState } from "../types/stocks";
+import { useEffect, useRef } from "react";
+import { useStockStore } from "../store/stockStore";
+import type { StockMessage } from "../types/stocks";
 
 const RECONNECT_DELAY_MS = 2000;
 
 export function useStockStream(url: string) {
-  const [symbols, setSymbols] = useState<Record<string, SymbolState>>({});
-  const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     let socket: WebSocket | null = null;
+    const { setStatus, applyMessage } = useStockStore.getState();
 
     const connect = () => {
       if (cancelled) return;
@@ -31,14 +31,7 @@ export function useStockStream(url: string) {
         } catch {
           return;
         }
-
-        setSymbols((prev) => {
-          const existing = prev[message.symbol] ?? { symbol: message.symbol };
-          return {
-            ...prev,
-            [message.symbol]: { ...existing, [message.type]: message },
-          };
-        });
+        applyMessage(message);
       };
 
       socket.onclose = () => {
@@ -60,6 +53,4 @@ export function useStockStream(url: string) {
       socket?.close();
     };
   }, [url]);
-
-  return { symbols, status };
 }

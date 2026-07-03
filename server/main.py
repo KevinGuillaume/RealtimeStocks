@@ -1,14 +1,13 @@
 import os
 import uvicorn
 from alpaca_stream import AlpacaMarketStream
+from bars import HistoricalBars, parse_timeframe
+from constants import WATCHLIST
 from dotenv import load_dotenv
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
-
-#@TODO Hardcoding this for now, but going to add frontend ability to push resources to client
-WATCHLIST = ["AAPL", "MSFT", "TSLA", "SPY"]
 
 app = FastAPI(title="RealtimeStocks API")
 
@@ -28,6 +27,11 @@ market_stream = AlpacaMarketStream(
     symbols=WATCHLIST,
 )
 
+historical_bars = HistoricalBars(
+    api_key=os.environ["ALPACA_API_KEY"],
+    secret_key=os.environ["ALPACA_SECRET_KEY"],
+)
+
 
 # When the server starts, start listening and open the connection
 @app.on_event("startup")
@@ -38,6 +42,21 @@ def start_market_stream():
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+
+@app.get("/symbols")
+def get_symbols() -> list[str]:
+    return ["AAPL", "MSFT", "TSLA", "SPY"]
+
+
+@app.get("/bars/{symbol}")
+def get_bars(symbol: str, timeframe: str = "1Min", limit: int = 200) -> list[dict]:
+    try:
+        parsed_timeframe = parse_timeframe(timeframe)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return historical_bars.get_recent_bars(symbol.upper(), parsed_timeframe, limit)
 
 
 @app.websocket("/ws/stocks")

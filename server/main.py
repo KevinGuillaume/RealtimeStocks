@@ -2,7 +2,6 @@ import os
 import uvicorn
 from alpaca_stream import AlpacaMarketStream
 from bars import HistoricalBars, parse_timeframe
-from constants import WATCHLIST
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,7 +23,7 @@ app.add_middleware(
 market_stream = AlpacaMarketStream(
     api_key=os.environ["ALPACA_API_KEY"],
     secret_key=os.environ["ALPACA_SECRET_KEY"],
-    symbols=WATCHLIST,
+    symbols=["AAPL", "MSFT", "TSLA", "SPY"],
 )
 
 historical_bars = HistoricalBars(

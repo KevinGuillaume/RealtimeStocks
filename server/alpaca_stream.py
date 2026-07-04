@@ -9,7 +9,7 @@ broadcast to connected frontend websockets.
 import asyncio
 import logging
 import threading
-from typing import Iterable
+from typing import Callable, Iterable
 
 from alpaca.data.enums import DataFeed
 from alpaca.data.live import StockDataStream
@@ -22,11 +22,19 @@ logger = logging.getLogger(__name__)
 
 
 class AlpacaMarketStream:
-    def __init__(self, api_key: str, secret_key: str, symbols: Iterable[str], feed: DataFeed = DataFeed.IEX):
+    def __init__(
+        self,
+        api_key: str,
+        secret_key: str,
+        symbols: Iterable[str],
+        feed: DataFeed = DataFeed.IEX,
+        on_tick: Callable[[dict], None] | None = None,
+    ):
         self._client = StockDataStream(api_key, secret_key, feed=feed)
         self._clients: set[WebSocket] = set()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
+        self._on_tick = on_tick
 
         symbols = list(symbols)
         self._client.subscribe_trades(self._on_trade, *symbols)
@@ -52,6 +60,8 @@ class AlpacaMarketStream:
 
     def _dispatch(self, message: dict) -> None:
         print(f"Returned from Alpaca: {message}")
+        if self._on_tick is not None:
+            self._on_tick(message)
         if self._loop is None:
             return
         asyncio.run_coroutine_threadsafe(self._broadcast(message), self._loop)

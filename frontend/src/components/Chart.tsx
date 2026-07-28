@@ -1,8 +1,7 @@
 import { useEffect, useRef } from "react";
 import { CandlestickSeries, createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from "lightweight-charts";
 import { useStockStore } from "../store/stockStore";
-
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+import { API_URL } from "../config";
 
 interface HistoricalBar {
   time: number;

@@ -27,7 +27,17 @@ export interface BarMessage {
   timestamp: string;
 }
 
-export type StockMessage = TradeMessage | QuoteMessage | BarMessage;
+export interface AlertTriggeredMessage {
+  type: "alert_triggered";
+  alert_id: number;
+  symbol: string;
+  condition: AlertCondition;
+  threshold: number;
+  price: number;
+  timestamp: string;
+}
+
+export type StockMessage = TradeMessage | QuoteMessage | BarMessage | AlertTriggeredMessage;
 
 export interface SymbolState {
   symbol: string;
@@ -37,3 +47,16 @@ export interface SymbolState {
 }
 
 export type ConnectionStatus = "connecting" | "open" | "closed";
+
+export type AlertCondition = "price_above" | "price_below" | "pct_change";
+
+export interface Alert {
+  id: number;
+  symbol: string;
+  condition: AlertCondition;
+  threshold: number;
+  baseline_price: number | null;
+  active: boolean;
+  created_at: string;
+  triggered_at: string | null;
+}

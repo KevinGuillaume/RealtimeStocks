@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import uvicorn
 from alpaca_stream import AlpacaMarketStream
 from bars import HistoricalBars, parse_timeframe
-from config import ALPACA_API_KEY, ALPACA_SECRET_KEY
+from config import ALPACA_API_KEY, ALPACA_SECRET_KEY, FRONTEND_URL
 from db import SessionLocal, engine, get_session
 from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -150,10 +150,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="RealtimeStocks API", lifespan=lifespan)
 
-#@TODO swap the origin to be whatever the host of wherever i move host at - once in prod
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[FRONTEND_URL],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

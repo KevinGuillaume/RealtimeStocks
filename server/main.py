@@ -156,22 +156,32 @@ async def get_symbols(session: AsyncSession = Depends(get_session)) -> list[str]
 @app.post("/symbols")
 async def add_symbol(symbol: str, session: AsyncSession = Depends(get_session)) -> dict:
     symbol = symbol.upper()
+
+    bars = await asyncio.to_thread(historical_bars.get_recent_bars, symbol, parse_timeframe("1Day"), 1)
+    if not bars:
+        raise HTTPException(status_code=400, detail=f"no price data for {symbol!r} — check the ticker")
+
     session.add(WatchlistSymbol(symbol=symbol))
     try:
         await session.commit()
     except IntegrityError:
         await session.rollback()
         raise HTTPException(status_code=409, detail=f"{symbol} already in watchlist")
-    # NOTE: does not update the live Alpaca stream subscription — a restart
-    # is required before ticks for this symbol appear on /ws/stocks.
+
+    await asyncio.to_thread(market_stream.add_symbols, symbol)
     return {"symbol": symbol}
 
 
 @app.delete("/symbols/{symbol}")
 async def remove_symbol(symbol: str, session: AsyncSession = Depends(get_session)) -> dict:
-    await session.execute(delete(WatchlistSymbol).where(WatchlistSymbol.symbol == symbol.upper()))
+    symbol = symbol.upper()
+    result = await session.execute(delete(WatchlistSymbol).where(WatchlistSymbol.symbol == symbol))
     await session.commit()
-    return {"symbol": symbol.upper()}
+    if result.rowcount:
+        # only unsubscribe if it was actually in the watchlist (and thus the
+        # live stream) — unsubscribing an unknown symbol raises in alpaca-py.
+        await asyncio.to_thread(market_stream.remove_symbols, symbol)
+    return {"symbol": symbol}
 
 
 @app.get("/bars/{symbol}")

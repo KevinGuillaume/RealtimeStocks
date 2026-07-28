@@ -58,6 +58,24 @@ class AlpacaMarketStream:
     def remove_client(self, websocket: WebSocket) -> None:
         self._clients.discard(websocket)
 
+    def add_symbols(self, *symbols: str) -> None:
+        """Subscribe already-running stream to more symbols.
+
+        alpaca-py's subscribe_* calls block on a
+        `run_coroutine_threadsafe(...).result()` against the stream's own
+        background-thread loop, so this must be called off the FastAPI event
+        loop (e.g. via `asyncio.to_thread`), never awaited directly.
+        """
+        self._client.subscribe_trades(self._on_trade, *symbols)
+        self._client.subscribe_quotes(self._on_quote, *symbols)
+        self._client.subscribe_bars(self._on_bar, *symbols)
+
+    def remove_symbols(self, *symbols: str) -> None:
+        """Unsubscribe a running stream from symbols. See add_symbols re: threading."""
+        self._client.unsubscribe_trades(*symbols)
+        self._client.unsubscribe_quotes(*symbols)
+        self._client.unsubscribe_bars(*symbols)
+
     def _dispatch(self, message: dict) -> None:
         print(f"Returned from Alpaca: {message}")
         if self._on_tick is not None:

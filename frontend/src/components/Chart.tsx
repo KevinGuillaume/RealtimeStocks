@@ -1,17 +1,8 @@
 import { useEffect, useRef } from "react";
 import { CandlestickSeries, createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from "lightweight-charts";
-import { useStockStore } from "../store/stockStore";
-import { API_URL } from "../config";
+import { fetchBars } from "../api/bars";
+import { useAppSelector } from "../store/hooks";
 import { formatPrice } from "../utilities/format";
-
-interface HistoricalBar {
-  time: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-}
 
 interface ChartProps {
   symbol: string;
@@ -23,9 +14,9 @@ export function Chart({ symbol }: ChartProps) {
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const lastTimeRef = useRef<number | null>(null);
 
-  const latestBar = useStockStore((state) => state.symbols[symbol]?.bar);
-  const symbolState = useStockStore((state) => state.symbols[symbol]);
-  const referencePrice = useStockStore((state) => state.referencePrices[symbol]);
+  const latestBar = useAppSelector((state) => state.marketData.symbols[symbol]?.bar);
+  const symbolState = useAppSelector((state) => state.marketData.symbols[symbol]);
+  const referencePrice = useAppSelector((state) => state.watchlist.referencePrices[symbol]);
 
   const price = symbolState?.trade?.price ?? symbolState?.bar?.close ?? symbolState?.quote?.ask_price;
   const change =
@@ -70,9 +61,8 @@ export function Chart({ symbol }: ChartProps) {
     lastTimeRef.current = null;
     seriesRef.current?.setData([]);
 
-    fetch(`${API_URL}/bars/${symbol}?timeframe=1Min&limit=200`)
-      .then((res) => res.json())
-      .then((bars: HistoricalBar[]) => {
+    fetchBars(symbol, "1Min", 200)
+      .then((bars) => {
         if (cancelled || !seriesRef.current) return;
         seriesRef.current.setData(
           bars.map((bar) => ({

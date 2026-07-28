@@ -7,7 +7,8 @@ import { Watchlist } from "./components/Watchlist";
 import { useAlerts } from "./hooks/useAlerts";
 import { useStockStream } from "./hooks/useStockStream";
 import { useWatchlist } from "./hooks/useWatchlist";
-import { useStockStore } from "./store/stockStore";
+import { useAppDispatch, useAppSelector } from "./store/hooks";
+import { setSelectedSymbol as setSelectedSymbolAction } from "./store/watchlistSlice";
 
 const WS_URL = import.meta.env.VITE_WS_URL ?? "ws://localhost:8000/ws/stocks";
 
@@ -15,12 +16,13 @@ function App() {
   useStockStream(WS_URL);
   const { addSymbol } = useWatchlist();
   const { createAlert, deleteAlert } = useAlerts();
+  const dispatch = useAppDispatch();
 
-  const status = useStockStore((state) => state.status);
-  const watchlist = useStockStore((state) => state.watchlist);
-  const selectedSymbol = useStockStore((state) => state.selectedSymbol);
-  const setSelectedSymbol = useStockStore((state) => state.setSelectedSymbol);
-  const alerts = useStockStore((state) => state.alerts);
+  const status = useAppSelector((state) => state.connection.status);
+  const watchlist = useAppSelector((state) => state.watchlist.watchlist);
+  const selectedSymbol = useAppSelector((state) => state.watchlist.selectedSymbol);
+  const setSelectedSymbol = (symbol: string) => dispatch(setSelectedSymbolAction(symbol));
+  const alerts = useAppSelector((state) => state.alerts.alerts);
 
   return (
     <div className="min-h-screen bg-slate-950 p-6 font-sans text-slate-100">

@@ -1,18 +1,19 @@
 import { useEffect } from "react";
-import { useStockStore } from "../store/stockStore";
+import { dismissAlertEvent as dismissAlertEventAction } from "../store/alertsSlice";
+import { useAppDispatch, useAppSelector } from "../store/hooks";
 import { formatPrice } from "../utilities/format";
 
 const AUTO_DISMISS_MS = 6000;
 
 export function AlertToast() {
-  const alertEvents = useStockStore((state) => state.alertEvents);
-  const dismissAlertEvent = useStockStore((state) => state.dismissAlertEvent);
+  const alertEvents = useAppSelector((state) => state.alerts.alertEvents);
+  const dispatch = useAppDispatch();
 
   useEffect(() => {
     if (alertEvents.length === 0) return;
-    const timer = setTimeout(() => dismissAlertEvent(0), AUTO_DISMISS_MS);
+    const timer = setTimeout(() => dispatch(dismissAlertEventAction(0)), AUTO_DISMISS_MS);
     return () => clearTimeout(timer);
-  }, [alertEvents, dismissAlertEvent]);
+  }, [alertEvents, dispatch]);
 
   if (alertEvents.length === 0) return null;
 
@@ -29,7 +30,7 @@ export function AlertToast() {
           </span>
           <button
             type="button"
-            onClick={() => dismissAlertEvent(index)}
+            onClick={() => dispatch(dismissAlertEventAction(index))}
             className="shrink-0 text-slate-500 hover:text-slate-300"
           >
             ×

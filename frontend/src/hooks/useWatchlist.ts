@@ -1,60 +1,54 @@
 import { useCallback, useEffect } from "react";
-import { useStockStore } from "../store/stockStore";
-import { API_URL } from "../config";
-
-async function throwOnError(res: Response): Promise<void> {
-  if (res.ok) return;
-  const body = await res.json().catch(() => null);
-  throw new Error(body?.detail ?? `request failed (${res.status})`);
-}
+import * as watchlistApi from "../api/watchlist";
+import { useAppDispatch } from "../store/hooks";
+import {
+  addWatchlistSymbol,
+  removeWatchlistSymbol,
+  setReferencePrice,
+  setWatchlist,
+} from "../store/watchlistSlice";
 
 export function useWatchlist() {
-  const setWatchlist = useStockStore((state) => state.setWatchlist);
-  const setReferencePrice = useStockStore((state) => state.setReferencePrice);
-  const addWatchlistSymbol = useStockStore((state) => state.addWatchlistSymbol);
-  const removeWatchlistSymbol = useStockStore((state) => state.removeWatchlistSymbol);
+  const dispatch = useAppDispatch();
 
   const addSymbol = useCallback(
     async (symbol: string) => {
-      const res = await fetch(`${API_URL}/symbols?symbol=${encodeURIComponent(symbol)}`, { method: "POST" });
-      await throwOnError(res);
-      const { symbol: added } = (await res.json()) as { symbol: string };
-      addWatchlistSymbol(added);
+      const added = await watchlistApi.addSymbol(symbol);
+      dispatch(addWatchlistSymbol(added));
 
-      fetch(`${API_URL}/bars/${added}?timeframe=1Day&limit=1`)
-        .then((res) => res.json())
-        .then((bars: { open: number }[]) => {
-          if (bars.length > 0) setReferencePrice(added, bars[0].open);
+      watchlistApi
+        .fetchOpeningPrice(added)
+        .then((price) => {
+          if (price !== null) dispatch(setReferencePrice({ symbol: added, price }));
         })
         .catch(() => {});
     },
-    [addWatchlistSymbol, setReferencePrice],
+    [dispatch],
   );
 
   const removeSymbol = useCallback(
     async (symbol: string) => {
-      const res = await fetch(`${API_URL}/symbols/${encodeURIComponent(symbol)}`, { method: "DELETE" });
-      await throwOnError(res);
-      removeWatchlistSymbol(symbol.toUpperCase());
+      await watchlistApi.removeSymbol(symbol);
+      dispatch(removeWatchlistSymbol(symbol.toUpperCase()));
     },
-    [removeWatchlistSymbol],
+    [dispatch],
   );
 
   useEffect(() => {
     let cancelled = false;
 
-    fetch(`${API_URL}/symbols`)
-      .then((res) => res.json())
-      .then((symbols: string[]) => {
+    watchlistApi
+      .fetchWatchlist()
+      .then((symbols) => {
         if (cancelled) return;
-        setWatchlist(symbols);
+        dispatch(setWatchlist(symbols));
 
         symbols.forEach((symbol) => {
-          fetch(`${API_URL}/bars/${symbol}?timeframe=1Day&limit=1`)
-            .then((res) => res.json())
-            .then((bars: { open: number }[]) => {
-              if (cancelled || bars.length === 0) return;
-              setReferencePrice(symbol, bars[0].open);
+          watchlistApi
+            .fetchOpeningPrice(symbol)
+            .then((price) => {
+              if (cancelled || price === null) return;
+              dispatch(setReferencePrice({ symbol, price }));
             })
             .catch(() => {});
         });
@@ -64,7 +58,7 @@ export function useWatchlist() {
     return () => {
       cancelled = true;
     };
-  }, [setWatchlist, setReferencePrice]);
+  }, [dispatch]);
 
   return { addSymbol, removeSymbol };
 }

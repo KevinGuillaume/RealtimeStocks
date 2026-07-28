@@ -43,7 +43,7 @@ function App() {
           </div>
 
           <div className="min-w-0 flex-1 space-y-4">
-            <SymbolSelector symbols={watchlist} selected={selectedSymbol} onSelect={setSelectedSymbol} />
+            <SymbolSelector selected={selectedSymbol} />
             <Chart symbol={selectedSymbol} />
             <AlertsPanel
               symbols={watchlist}

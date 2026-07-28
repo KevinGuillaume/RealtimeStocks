@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { CandlestickSeries, createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from "lightweight-charts";
 import { useStockStore } from "../store/stockStore";
 import { API_URL } from "../config";
+import { formatPrice } from "../utilities/format";
 
 interface HistoricalBar {
   time: number;
@@ -23,6 +24,12 @@ export function Chart({ symbol }: ChartProps) {
   const lastTimeRef = useRef<number | null>(null);
 
   const latestBar = useStockStore((state) => state.symbols[symbol]?.bar);
+  const symbolState = useStockStore((state) => state.symbols[symbol]);
+  const referencePrice = useStockStore((state) => state.referencePrices[symbol]);
+
+  const price = symbolState?.trade?.price ?? symbolState?.bar?.close ?? symbolState?.quote?.ask_price;
+  const change =
+    price !== undefined && referencePrice ? ((price - referencePrice) / referencePrice) * 100 : undefined;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -106,5 +113,19 @@ export function Chart({ symbol }: ChartProps) {
     });
   }, [latestBar]);
 
-  return <div ref={containerRef} className="w-full overflow-hidden rounded-lg border border-slate-800" />;
+  return (
+    <div className="overflow-hidden rounded-lg border border-slate-800">
+      <div className="flex items-baseline gap-2 border-b border-slate-800 bg-slate-900 px-4 py-2">
+        <span className="font-mono text-lg tabular-nums text-slate-100">{formatPrice(price)}</span>
+        <span
+          className={`font-mono text-sm tabular-nums ${
+            change === undefined ? "text-slate-500" : change >= 0 ? "text-emerald-400" : "text-red-400"
+          }`}
+        >
+          {change === undefined ? "—" : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}
+        </span>
+      </div>
+      <div ref={containerRef} className="w-full" />
+    </div>
+  );
 }

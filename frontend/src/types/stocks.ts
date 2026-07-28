@@ -30,6 +30,7 @@ export interface BarMessage {
 export interface AlertTriggeredMessage {
   type: "alert_triggered";
   alert_id: number;
+  device_id: string;
   symbol: string;
   condition: AlertCondition;
   threshold: number;

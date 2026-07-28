@@ -1,22 +1,22 @@
 import { type ApiConfig, defaultApiConfig } from "./config";
 import { fetchBars } from "./bars";
-import { throwOnError } from "./http";
+import { apiFetch, throwOnError } from "./http";
 
 export async function fetchWatchlist(config: ApiConfig = defaultApiConfig): Promise<string[]> {
-  const res = await fetch(`${config.baseUrl}/symbols`);
+  const res = await apiFetch(`${config.baseUrl}/symbols`);
   await throwOnError(res);
   return res.json();
 }
 
 export async function addSymbol(symbol: string, config: ApiConfig = defaultApiConfig): Promise<string> {
-  const res = await fetch(`${config.baseUrl}/symbols?symbol=${encodeURIComponent(symbol)}`, { method: "POST" });
+  const res = await apiFetch(`${config.baseUrl}/symbols?symbol=${encodeURIComponent(symbol)}`, { method: "POST" });
   await throwOnError(res);
   const { symbol: added } = (await res.json()) as { symbol: string };
   return added;
 }
 
 export async function removeSymbol(symbol: string, config: ApiConfig = defaultApiConfig): Promise<void> {
-  const res = await fetch(`${config.baseUrl}/symbols/${encodeURIComponent(symbol)}`, { method: "DELETE" });
+  const res = await apiFetch(`${config.baseUrl}/symbols/${encodeURIComponent(symbol)}`, { method: "DELETE" });
   await throwOnError(res);
 }
 

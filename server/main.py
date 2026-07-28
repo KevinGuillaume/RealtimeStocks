@@ -7,9 +7,10 @@ from alpaca_stream import AlpacaMarketStream
 from bars import HistoricalBars, parse_timeframe
 from config import ALPACA_API_KEY, ALPACA_SECRET_KEY
 from db import SessionLocal, engine, get_session
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from models import Alert, WatchlistSymbol
+from slack_notify import notify_alert_triggered
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,11 +27,26 @@ _active_alerts_cache: dict[str, list[dict]] = {}
 _alert_queue: asyncio.Queue = asyncio.Queue()
 
 
-async def seed_watchlist_if_empty(session: AsyncSession) -> None:
-    count = (await session.execute(select(func.count()).select_from(WatchlistSymbol))).scalar_one()
+async def get_device_id(x_device_id: str | None = Header(default=None)) -> str:
+    if not x_device_id:
+        raise HTTPException(status_code=400, detail="X-Device-Id header required")
+    return x_device_id
+
+
+async def seed_watchlist_if_empty(session: AsyncSession, device_id: str) -> bool:
+    """Seeds a brand-new device's watchlist with the defaults. Returns whether it seeded."""
+    count = (
+        await session.execute(
+            select(func.count()).select_from(WatchlistSymbol).where(WatchlistSymbol.device_id == device_id)
+        )
+    ).scalar_one()
     if count == 0:
-        session.add_all(WatchlistSymbol(symbol=s, sort_order=i) for i, s in enumerate(_DEFAULT_SYMBOLS))
+        session.add_all(
+            WatchlistSymbol(symbol=s, sort_order=i, device_id=device_id) for i, s in enumerate(_DEFAULT_SYMBOLS)
+        )
         await session.commit()
+        return True
+    return False
 
 
 async def refresh_active_alerts_cache(session: AsyncSession) -> None:
@@ -40,6 +56,7 @@ async def refresh_active_alerts_cache(session: AsyncSession) -> None:
         cache.setdefault(alert.symbol, []).append(
             {
                 "id": alert.id,
+                "device_id": alert.device_id,
                 "symbol": alert.symbol,
                 "condition": alert.condition,
                 "threshold": alert.threshold,
@@ -97,6 +114,7 @@ async def alert_fire_worker() -> None:
             {
                 "type": "alert_triggered",
                 "alert_id": alert["id"],
+                "device_id": alert["device_id"],
                 "symbol": alert["symbol"],
                 "condition": alert["condition"],
                 "threshold": alert["threshold"],
@@ -104,6 +122,7 @@ async def alert_fire_worker() -> None:
                 "timestamp": message["timestamp"],
             }
         )
+        asyncio.create_task(notify_alert_triggered(alert, message))
 
 
 @asynccontextmanager
@@ -111,8 +130,7 @@ async def lifespan(app: FastAPI):
     global market_stream
 
     async with SessionLocal() as session:
-        await seed_watchlist_if_empty(session)
-        symbols = list((await session.execute(select(WatchlistSymbol.symbol))).scalars().all())
+        symbols = list((await session.execute(select(WatchlistSymbol.symbol).distinct())).scalars().all())
         await refresh_active_alerts_cache(session)
 
     market_stream = AlpacaMarketStream(
@@ -148,20 +166,32 @@ def health_check():
 
 
 @app.get("/symbols")
-async def get_symbols(session: AsyncSession = Depends(get_session)) -> list[str]:
-    result = await session.execute(select(WatchlistSymbol.symbol).order_by(WatchlistSymbol.sort_order))
+async def get_symbols(
+    device_id: str = Depends(get_device_id), session: AsyncSession = Depends(get_session)
+) -> list[str]:
+    seeded = await seed_watchlist_if_empty(session, device_id)
+    if seeded:
+        await asyncio.to_thread(market_stream.add_symbols, *_DEFAULT_SYMBOLS)
+
+    result = await session.execute(
+        select(WatchlistSymbol.symbol)
+        .where(WatchlistSymbol.device_id == device_id)
+        .order_by(WatchlistSymbol.sort_order)
+    )
     return list(result.scalars().all())
 
 
 @app.post("/symbols")
-async def add_symbol(symbol: str, session: AsyncSession = Depends(get_session)) -> dict:
+async def add_symbol(
+    symbol: str, device_id: str = Depends(get_device_id), session: AsyncSession = Depends(get_session)
+) -> dict:
     symbol = symbol.upper()
 
     bars = await asyncio.to_thread(historical_bars.get_recent_bars, symbol, parse_timeframe("1Day"), 1)
     if not bars:
         raise HTTPException(status_code=400, detail=f"no price data for {symbol!r} — check the ticker")
 
-    session.add(WatchlistSymbol(symbol=symbol))
+    session.add(WatchlistSymbol(symbol=symbol, device_id=device_id))
     try:
         await session.commit()
     except IntegrityError:
@@ -173,14 +203,24 @@ async def add_symbol(symbol: str, session: AsyncSession = Depends(get_session)) 
 
 
 @app.delete("/symbols/{symbol}")
-async def remove_symbol(symbol: str, session: AsyncSession = Depends(get_session)) -> dict:
+async def remove_symbol(
+    symbol: str, device_id: str = Depends(get_device_id), session: AsyncSession = Depends(get_session)
+) -> dict:
     symbol = symbol.upper()
-    result = await session.execute(delete(WatchlistSymbol).where(WatchlistSymbol.symbol == symbol))
+    result = await session.execute(
+        delete(WatchlistSymbol).where(WatchlistSymbol.symbol == symbol, WatchlistSymbol.device_id == device_id)
+    )
     await session.commit()
     if result.rowcount:
-        # only unsubscribe if it was actually in the watchlist (and thus the
-        # live stream) — unsubscribing an unknown symbol raises in alpaca-py.
-        await asyncio.to_thread(market_stream.remove_symbols, symbol)
+        remaining = (
+            await session.execute(
+                select(func.count()).select_from(WatchlistSymbol).where(WatchlistSymbol.symbol == symbol)
+            )
+        ).scalar_one()
+        if remaining == 0:
+            # only unsubscribe once no device is watching this symbol anymore —
+            # unsubscribing an unknown symbol raises in alpaca-py.
+            await asyncio.to_thread(market_stream.remove_symbols, symbol)
     return {"symbol": symbol}
 
 
@@ -208,14 +248,22 @@ def _alert_to_dict(alert: Alert) -> dict:
 
 
 @app.get("/alerts")
-async def list_alerts(session: AsyncSession = Depends(get_session)) -> list[dict]:
-    result = await session.execute(select(Alert).order_by(Alert.created_at))
+async def list_alerts(
+    device_id: str = Depends(get_device_id), session: AsyncSession = Depends(get_session)
+) -> list[dict]:
+    result = await session.execute(
+        select(Alert).where(Alert.device_id == device_id).order_by(Alert.created_at)
+    )
     return [_alert_to_dict(alert) for alert in result.scalars()]
 
 
 @app.post("/alerts")
 async def create_alert(
-    symbol: str, condition: str, threshold: float, session: AsyncSession = Depends(get_session)
+    symbol: str,
+    condition: str,
+    threshold: float,
+    device_id: str = Depends(get_device_id),
+    session: AsyncSession = Depends(get_session),
 ) -> dict:
     if condition not in _VALID_CONDITIONS:
         raise HTTPException(status_code=400, detail=f"condition must be one of {sorted(_VALID_CONDITIONS)}")
@@ -228,7 +276,9 @@ async def create_alert(
             raise HTTPException(status_code=400, detail=f"no recent price data for {symbol}")
         baseline_price = bars[-1]["close"]
 
-    alert = Alert(symbol=symbol, condition=condition, threshold=threshold, baseline_price=baseline_price)
+    alert = Alert(
+        symbol=symbol, condition=condition, threshold=threshold, baseline_price=baseline_price, device_id=device_id
+    )
     session.add(alert)
     await session.commit()
     await session.refresh(alert)
@@ -237,8 +287,10 @@ async def create_alert(
 
 
 @app.delete("/alerts/{alert_id}")
-async def delete_alert(alert_id: int, session: AsyncSession = Depends(get_session)) -> dict:
-    await session.execute(delete(Alert).where(Alert.id == alert_id))
+async def delete_alert(
+    alert_id: int, device_id: str = Depends(get_device_id), session: AsyncSession = Depends(get_session)
+) -> dict:
+    await session.execute(delete(Alert).where(Alert.id == alert_id, Alert.device_id == device_id))
     await session.commit()
     await refresh_active_alerts_cache(session)
     return {"id": alert_id}

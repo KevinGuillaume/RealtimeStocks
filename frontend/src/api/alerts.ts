@@ -1,6 +1,6 @@
 import type { Alert, AlertCondition } from "../types/stocks";
 import { type ApiConfig, defaultApiConfig } from "./config";
-import { throwOnError } from "./http";
+import { apiFetch, throwOnError } from "./http";
 
 export interface NewAlert {
   symbol: string;
@@ -9,7 +9,7 @@ export interface NewAlert {
 }
 
 export async function fetchAlerts(config: ApiConfig = defaultApiConfig): Promise<Alert[]> {
-  const res = await fetch(`${config.baseUrl}/alerts`);
+  const res = await apiFetch(`${config.baseUrl}/alerts`);
   await throwOnError(res);
   return res.json();
 }
@@ -19,12 +19,12 @@ export async function createAlertRequest(
   config: ApiConfig = defaultApiConfig,
 ): Promise<Alert> {
   const params = new URLSearchParams({ symbol, condition, threshold: String(threshold) });
-  const res = await fetch(`${config.baseUrl}/alerts?${params}`, { method: "POST" });
+  const res = await apiFetch(`${config.baseUrl}/alerts?${params}`, { method: "POST" });
   await throwOnError(res);
   return res.json();
 }
 
 export async function deleteAlertRequest(id: number, config: ApiConfig = defaultApiConfig): Promise<void> {
-  const res = await fetch(`${config.baseUrl}/alerts/${id}`, { method: "DELETE" });
+  const res = await apiFetch(`${config.baseUrl}/alerts/${id}`, { method: "DELETE" });
   await throwOnError(res);
 }

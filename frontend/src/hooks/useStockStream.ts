@@ -4,6 +4,7 @@ import { setStatus } from "../store/connectionSlice";
 import { useAppDispatch } from "../store/hooks";
 import { symbolMessageReceived } from "../store/marketDataSlice";
 import type { StockMessage } from "../types/stocks";
+import { getDeviceId } from "../utilities/deviceId";
 
 const RECONNECT_DELAY_MS = 2000;
 
@@ -35,7 +36,7 @@ export function useStockStream(url: string) {
           return;
         }
         if (message.type === "alert_triggered") {
-          dispatch(alertTriggered(message));
+          if (message.device_id === getDeviceId()) dispatch(alertTriggered(message));
         } else {
           dispatch(symbolMessageReceived(message));
         }

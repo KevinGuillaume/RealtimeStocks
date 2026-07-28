@@ -1,4 +1,5 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
+import { getStoredSymbol, setStoredSymbol } from "../utilities/storage";
 
 interface WatchlistState {
   watchlist: string[];
@@ -8,7 +9,7 @@ interface WatchlistState {
 
 const initialState: WatchlistState = {
   watchlist: [],
-  selectedSymbol: null,
+  selectedSymbol: getStoredSymbol(),
   referencePrices: {},
 };
 
@@ -18,10 +19,16 @@ const watchlistSlice = createSlice({
   reducers: {
     setSelectedSymbol(state, action: PayloadAction<string>) {
       state.selectedSymbol = action.payload;
+      setStoredSymbol(action.payload);
     },
     setWatchlist(state, action: PayloadAction<string[]>) {
       state.watchlist = action.payload;
-      state.selectedSymbol = state.selectedSymbol ?? action.payload[0] ?? null;
+      // keep the remembered symbol if it's actually still in the incoming
+      // watchlist, otherwise fall back to the first symbol
+      if (!state.selectedSymbol || !action.payload.includes(state.selectedSymbol)) {
+        state.selectedSymbol = action.payload[0] ?? null;
+      }
+      setStoredSymbol(state.selectedSymbol);
     },
     setReferencePrice(state, action: PayloadAction<{ symbol: string; price: number }>) {
       state.referencePrices[action.payload.symbol] = action.payload.price;
@@ -30,12 +37,14 @@ const watchlistSlice = createSlice({
       const symbol = action.payload;
       if (!state.watchlist.includes(symbol)) state.watchlist.push(symbol);
       state.selectedSymbol = state.selectedSymbol ?? symbol;
+      setStoredSymbol(state.selectedSymbol);
     },
     removeWatchlistSymbol(state, action: PayloadAction<string>) {
       const symbol = action.payload;
       state.watchlist = state.watchlist.filter((s) => s !== symbol);
       if (state.selectedSymbol === symbol) {
         state.selectedSymbol = state.watchlist[0] ?? null;
+        setStoredSymbol(state.selectedSymbol);
       }
     },
   },

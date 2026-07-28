@@ -1,6 +1,5 @@
 venv/
 .env
-*/migrations
 # Logs
 logs
 *.log

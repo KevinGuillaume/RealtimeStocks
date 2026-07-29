@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import uvicorn
 from alpaca_stream import AlpacaMarketStream
 from bars import HistoricalBars, parse_timeframe
-from config import ALPACA_API_KEY, ALPACA_SECRET_KEY, FRONTEND_URL, SLACK_WEBHOOK_URL
+from config import ALPACA_API_KEY, ALPACA_SECRET_KEY, FRONTEND_URLS, SLACK_WEBHOOK_URL
 from db import SessionLocal, engine, get_session
 from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -206,7 +206,7 @@ app = FastAPI(title="RealtimeStocks API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL],
+    allow_origins=FRONTEND_URLS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

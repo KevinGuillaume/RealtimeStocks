@@ -13,6 +13,9 @@ DATABASE_URL_DIRECT = os.environ["DATABASE_URL_DIRECT"]
 # silently skipped (see slack_notify.py).
 SLACK_WEBHOOK_URL = os.environ.get("SLACK_WEBHOOK_URL")
 
-# Origin the frontend is served from, for CORS. Defaults to the Vite dev
-# server so local development keeps working without a .env entry.
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+# Origin(s) the frontend is served from, for CORS. Comma-separated for
+# multiple domains (e.g. a Netlify subdomain + a custom domain). Defaults to
+# the Vite dev server so local development keeps working without a .env entry.
+FRONTEND_URLS = [
+    url.strip() for url in os.environ.get("FRONTEND_URL", "http://localhost:5173").split(",") if url.strip()
+]

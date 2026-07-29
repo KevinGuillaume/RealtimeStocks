@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { fetchAppStatus } from "../api/status";
 import type { Alert, AlertCondition } from "../types/stocks";
 import type { NewAlert } from "../hooks/useAlerts";
 import { formatPrice } from "../utilities/format";
@@ -23,6 +24,19 @@ export function AlertsPanel({ symbols, selected, alerts, onCreate, onDelete }: A
   const [threshold, setThreshold] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [slackConnected, setSlackConnected] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchAppStatus()
+      .then((status) => {
+        if (!cancelled) setSlackConnected(status.slack_connected);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const activeSymbol = symbols.includes(symbol) ? symbol : (selected ?? symbols[0] ?? "");
 
@@ -44,18 +58,63 @@ export function AlertsPanel({ symbols, selected, alerts, onCreate, onDelete }: A
   };
 
   return (
-    <div className="rounded-lg border border-slate-800 bg-slate-900">
-      <div className="border-b border-slate-800 px-4 py-3">
-        <h2 className="text-sm font-semibold text-slate-100">Alerts</h2>
+    <div className="flex h-full min-h-0 flex-col rounded-lg border border-[var(--stx-divider)] bg-[var(--stx-surface)]">
+      <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--stx-divider)] px-3 py-2.5 text-sm font-medium">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+          <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+        </svg>
+        Active alerts
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2 px-4 py-3">
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-slate-500">Symbol</span>
+      {!slackConnected && (
+        <div className="shrink-0 border-b border-[var(--stx-divider)] bg-[var(--stx-down)]/10 px-3 py-2 text-[11px] text-[var(--stx-down)]">
+          Slack webhook not connected
+        </div>
+      )}
+
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2.5">
+        {alerts.length === 0 && <p className="px-1 text-xs text-[var(--stx-text-dim)]">No alerts yet.</p>}
+        {alerts.map((alert) => (
+          <div
+            key={alert.id}
+            className={`rounded-md bg-[var(--stx-surface-2)] px-2.5 py-2 ${alert.active ? "" : "opacity-50"}`}
+          >
+            <div className="flex items-center gap-1.5">
+              <span className="shrink-0 rounded bg-[var(--stx-accent-dim)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--stx-accent)]">
+                {alert.symbol}
+              </span>
+              <span
+                className={`min-w-0 flex-1 truncate text-xs ${alert.active ? "" : "line-through"}`}
+                title={`${CONDITION_LABELS[alert.condition]} ${
+                  alert.condition === "pct_change" ? alert.threshold : formatPrice(alert.threshold)
+                }`}
+              >
+                {CONDITION_LABELS[alert.condition]}{" "}
+                {alert.condition === "pct_change" ? alert.threshold : formatPrice(alert.threshold)}
+              </span>
+              <button
+                type="button"
+                onClick={() => onDelete(alert.id)}
+                className="shrink-0 text-[var(--stx-text-dim)] hover:text-[var(--stx-down)]"
+                aria-label="Remove alert"
+              >
+                ×
+              </button>
+            </div>
+            {alert.active && (
+              <div className="mt-1 text-[11px] text-[var(--stx-text-dim)]">triggers on next tick</div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <form onSubmit={handleSubmit} className="shrink-0 border-t border-[var(--stx-divider)] p-2.5">
+        <div className="flex flex-col gap-1.5">
           <select
             value={activeSymbol}
             onChange={(event) => setSymbol(event.target.value)}
-            className="rounded-md border border-slate-800 bg-slate-950 px-2 py-1.5 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+            className="min-h-[30px] rounded-md border border-[var(--stx-divider)] bg-[var(--stx-surface-2)] px-2 text-xs focus:border-[var(--stx-accent)] focus:outline-none"
           >
             {symbols.map((s) => (
               <option key={s} value={s}>
@@ -63,14 +122,10 @@ export function AlertsPanel({ symbols, selected, alerts, onCreate, onDelete }: A
               </option>
             ))}
           </select>
-        </label>
-
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-slate-500">Condition</span>
           <select
             value={condition}
             onChange={(event) => setCondition(event.target.value as AlertCondition)}
-            className="rounded-md border border-slate-800 bg-slate-950 px-2 py-1.5 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+            className="min-h-[30px] rounded-md border border-[var(--stx-divider)] bg-[var(--stx-surface-2)] px-2 text-xs focus:border-[var(--stx-accent)] focus:outline-none"
           >
             {(Object.keys(CONDITION_LABELS) as AlertCondition[]).map((key) => (
               <option key={key} value={key}>
@@ -78,58 +133,24 @@ export function AlertsPanel({ symbols, selected, alerts, onCreate, onDelete }: A
               </option>
             ))}
           </select>
-        </label>
-
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-slate-500">Threshold</span>
           <input
             value={threshold}
             onChange={(event) => setThreshold(event.target.value)}
             type="number"
             step="any"
-            placeholder={condition === "pct_change" ? "0.02 = 2%" : "price"}
-            className="w-28 rounded-md border border-slate-800 bg-slate-950 px-2 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
+            placeholder={condition === "pct_change" ? "0.02 = 2%" : "Threshold"}
+            className="min-h-[30px] rounded-md border border-[var(--stx-divider)] bg-[var(--stx-surface-2)] px-2 text-xs placeholder:text-[var(--stx-text-dim)] focus:border-[var(--stx-accent)] focus:outline-none"
           />
-        </label>
-
-        <button
-          type="submit"
-          disabled={submitting || !threshold}
-          className="rounded-md bg-emerald-500 px-3 py-1.5 text-sm font-medium text-slate-950 transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Create alert
-        </button>
+          <button
+            type="submit"
+            disabled={submitting || !threshold}
+            className="min-h-[30px] rounded-md border border-[var(--stx-accent)] text-xs font-medium text-[var(--stx-accent)] transition-colors hover:bg-[var(--stx-accent-dim)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Create alert
+          </button>
+        </div>
+        {error && <p className="mt-1.5 text-[11px] text-[var(--stx-down)]">{error}</p>}
       </form>
-      {error && <p className="px-4 pb-2 text-xs text-red-400">{error}</p>}
-
-      {alerts.length > 0 && (
-        <>
-          <h3 className="px-4 pt-3 text-xs font-semibold text-slate-500">Active Alerts:</h3>
-          <ul className="space-y-2 border-t border-slate-800 px-4 py-3">
-            {alerts.map((alert) => (
-              <li
-                key={alert.id}
-                className="flex items-center justify-between gap-3 rounded-md border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm"
-              >
-                <span className={alert.active ? "text-slate-200" : "text-slate-500 line-through"}>
-                  <span className="mr-2 rounded bg-slate-800 px-1.5 py-0.5 text-xs font-semibold text-emerald-400">
-                    {alert.symbol}
-                  </span>
-                  {CONDITION_LABELS[alert.condition]}{" "}
-                  {alert.condition === "pct_change" ? alert.threshold : formatPrice(alert.threshold)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => onDelete(alert.id)}
-                  className="shrink-0 rounded-md px-2 py-1 text-xs text-slate-500 transition-colors hover:bg-red-500/10 hover:text-red-400"
-                >
-                  remove
-                </button>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
     </div>
   );
 }

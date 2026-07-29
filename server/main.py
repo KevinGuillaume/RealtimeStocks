@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import uvicorn
 from alpaca_stream import AlpacaMarketStream
 from bars import HistoricalBars, parse_timeframe
-from config import ALPACA_API_KEY, ALPACA_SECRET_KEY, FRONTEND_URL
+from config import ALPACA_API_KEY, ALPACA_SECRET_KEY, FRONTEND_URL, SLACK_WEBHOOK_URL
 from db import SessionLocal, engine, get_session
 from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -162,6 +162,11 @@ app.add_middleware(
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+
+@app.get("/config")
+def get_config() -> dict:
+    return {"slack_connected": bool(SLACK_WEBHOOK_URL)}
 
 
 @app.get("/symbols")

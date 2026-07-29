@@ -1,1 +1,25 @@
 @import "tailwindcss";
+
+:root {
+  --stx-bg: #14151f;
+  --stx-surface: #1b1d29;
+  --stx-surface-2: #20222f;
+  --stx-text: #e9e9ed;
+  --stx-text-dim: #9397ab;
+  --stx-divider: rgba(233, 233, 237, 0.12);
+  --stx-accent: #9184d9;
+  --stx-accent-dim: rgba(145, 132, 217, 0.16);
+  --stx-up: #7fd4a8;
+  --stx-down: #e28b8b;
+}
+
+body {
+  overflow: hidden;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

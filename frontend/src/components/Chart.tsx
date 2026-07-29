@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CandlestickSeries, createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from "lightweight-charts";
 import { fetchBars } from "../api/bars";
 import { useAppSelector } from "../store/hooks";
@@ -8,11 +8,22 @@ interface ChartProps {
   symbol: string;
 }
 
+const TIMEFRAMES = [
+  { key: "1D", timeframe: "1Min", limit: 390, live: true },
+  { key: "1W", timeframe: "15Min", limit: 130, live: false },
+  { key: "1M", timeframe: "1Day", limit: 22, live: false },
+  { key: "1Y", timeframe: "1Week", limit: 52, live: false },
+] as const;
+
+type TimeframeKey = (typeof TIMEFRAMES)[number]["key"];
+
 export function Chart({ symbol }: ChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const lastTimeRef = useRef<number | null>(null);
+  const [timeframeKey, setTimeframeKey] = useState<TimeframeKey>("1D");
+  const timeframe = TIMEFRAMES.find((tf) => tf.key === timeframeKey)!;
 
   const latestBar = useAppSelector((state) => state.marketData.symbols[symbol]?.bar);
   const symbolState = useAppSelector((state) => state.marketData.symbols[symbol]);
@@ -26,30 +37,34 @@ export function Chart({ symbol }: ChartProps) {
     if (!containerRef.current) return;
 
     const chart = createChart(containerRef.current, {
-      layout: { background: { color: "#020617" }, textColor: "#cbd5e1" },
-      grid: { vertLines: { color: "#1e293b" }, horzLines: { color: "#1e293b" } },
+      layout: { background: { color: "#14151f" }, textColor: "#b2b6ca" },
+      grid: { vertLines: { color: "rgba(233,233,237,0.06)" }, horzLines: { color: "rgba(233,233,237,0.06)" } },
       width: containerRef.current.clientWidth,
-      height: 420,
+      height: containerRef.current.clientHeight,
       timeScale: { timeVisible: true, secondsVisible: false },
     });
     const series = chart.addSeries(CandlestickSeries, {
-      upColor: "#34d399",
-      downColor: "#f87171",
+      upColor: "#7fd4a8",
+      downColor: "#e28b8b",
       borderVisible: false,
-      wickUpColor: "#34d399",
-      wickDownColor: "#f87171",
+      wickUpColor: "#7fd4a8",
+      wickDownColor: "#e28b8b",
     });
 
     chartRef.current = chart;
     seriesRef.current = series;
 
     const handleResize = () => {
-      if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth });
+      if (!containerRef.current) return;
+      chart.applyOptions({ width: containerRef.current.clientWidth, height: containerRef.current.clientHeight });
     };
     window.addEventListener("resize", handleResize);
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(containerRef.current);
 
     return () => {
       window.removeEventListener("resize", handleResize);
+      resizeObserver.disconnect();
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
@@ -61,7 +76,7 @@ export function Chart({ symbol }: ChartProps) {
     lastTimeRef.current = null;
     seriesRef.current?.setData([]);
 
-    fetchBars(symbol, "1Min", 200)
+    fetchBars(symbol, timeframe.timeframe, timeframe.limit)
       .then((bars) => {
         if (cancelled || !seriesRef.current) return;
         seriesRef.current.setData(
@@ -85,10 +100,10 @@ export function Chart({ symbol }: ChartProps) {
     return () => {
       cancelled = true;
     };
-  }, [symbol]);
+  }, [symbol, timeframe.timeframe, timeframe.limit]);
 
   useEffect(() => {
-    if (!latestBar || !seriesRef.current) return;
+    if (!timeframe.live || !latestBar || !seriesRef.current) return;
 
     const time = Math.floor(new Date(latestBar.timestamp).getTime() / 1000);
     if (lastTimeRef.current !== null && time < lastTimeRef.current) return;
@@ -101,21 +116,40 @@ export function Chart({ symbol }: ChartProps) {
       low: latestBar.low,
       close: latestBar.close,
     });
-  }, [latestBar]);
+  }, [latestBar, timeframe.live]);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-800">
-      <div className="flex items-baseline gap-2 border-b border-slate-800 bg-slate-900 px-4 py-2">
-        <span className="font-mono text-lg tabular-nums text-slate-100">{formatPrice(price)}</span>
+    <div className="flex h-full min-h-0 flex-col rounded-lg border border-[var(--stx-divider)] bg-[var(--stx-surface)]">
+      <div className="flex shrink-0 items-center gap-3 border-b border-[var(--stx-divider)] px-4 py-2.5">
+        <span className="text-sm font-medium">{symbol}</span>
+        <div className="ml-auto flex overflow-hidden rounded-md border border-[var(--stx-divider)]">
+          {TIMEFRAMES.map((tf) => (
+            <button
+              key={tf.key}
+              type="button"
+              onClick={() => setTimeframeKey(tf.key)}
+              className={`border-l border-[var(--stx-divider)] px-2.5 py-1 text-xs first:border-l-0 ${
+                tf.key === timeframeKey
+                  ? "text-[var(--stx-accent)] shadow-[inset_0_0_0_1px_var(--stx-accent)]"
+                  : "text-[var(--stx-text-dim)] hover:bg-white/[0.04]"
+              }`}
+            >
+              {tf.key}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex shrink-0 items-baseline gap-2 px-4 py-2.5">
+        <span className="font-mono text-lg tabular-nums">{formatPrice(price)}</span>
         <span
           className={`font-mono text-sm tabular-nums ${
-            change === undefined ? "text-slate-500" : change >= 0 ? "text-emerald-400" : "text-red-400"
+            change === undefined ? "text-[var(--stx-text-dim)]" : change >= 0 ? "text-[var(--stx-up)]" : "text-[var(--stx-down)]"
           }`}
         >
           {change === undefined ? "—" : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}
         </span>
       </div>
-      <div ref={containerRef} className="w-full" />
+      <div ref={containerRef} className="min-h-0 w-full flex-1" />
     </div>
   );
 }

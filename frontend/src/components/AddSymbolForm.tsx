@@ -27,24 +27,25 @@ export function AddSymbolForm({ onAdd }: AddSymbolFormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="w-56 shrink-0 space-y-1">
-      <div className="flex gap-2">
+    <form onSubmit={handleSubmit} className="shrink-0 border-t border-[var(--stx-divider)] p-2.5">
+      <div className="flex gap-1.5">
         <input
           value={value}
           onChange={(event) => setValue(event.target.value)}
           placeholder="Add symbol…"
           maxLength={10}
-          className="w-full rounded-md border border-slate-800 bg-slate-900 px-3 py-1.5 text-sm uppercase text-slate-100 placeholder:normal-case placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
+          className="min-h-[30px] w-full flex-1 rounded-md border border-[var(--stx-divider)] bg-[var(--stx-surface-2)] px-2.5 text-xs uppercase text-[var(--stx-text)] placeholder:normal-case placeholder:text-[var(--stx-text-dim)] focus:border-[var(--stx-accent)] focus:outline-none"
         />
         <button
           type="submit"
           disabled={submitting || !value.trim()}
-          className="shrink-0 rounded-md bg-emerald-500 px-3 py-1.5 text-sm font-medium text-slate-950 transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className="shrink-0 rounded-md border border-[var(--stx-accent)] px-2.5 text-sm text-[var(--stx-accent)] transition-colors hover:bg-[var(--stx-accent-dim)] disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label="Add symbol"
         >
-          Add
+          +
         </button>
       </div>
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="mt-1 text-[11px] text-[var(--stx-down)]">{error}</p>}
     </form>
   );
 }

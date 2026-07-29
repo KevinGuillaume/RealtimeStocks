@@ -2,6 +2,7 @@ import { AddSymbolForm } from "./components/AddSymbolForm";
 import { AlertsPanel } from "./components/AlertsPanel";
 import { AlertToast } from "./components/AlertToast";
 import { Chart } from "./components/Chart";
+import { HelpPanel } from "./components/HelpPanel";
 import { Watchlist } from "./components/Watchlist";
 import { useAlerts } from "./hooks/useAlerts";
 import { useStockStream } from "./hooks/useStockStream";
@@ -45,6 +46,8 @@ function App() {
           {STATUS_LABEL[status] ?? status}
         </span>
       </header>
+
+      <HelpPanel />
 
       {watchlist.length === 0 || !selectedSymbol ? (
         <p className="p-6 text-sm text-[var(--stx-text-dim)]">Loading symbols…</p>

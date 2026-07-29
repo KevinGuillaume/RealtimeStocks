@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 _DEFAULT_SYMBOLS = ["AAPL", "MSFT", "TSLA", "SPY"]
 _VALID_CONDITIONS = {"price_above", "price_below", "pct_change"}
+_MAX_WATCHLIST_SYMBOLS = 30
 
 historical_bars = HistoricalBars(api_key=ALPACA_API_KEY, secret_key=ALPACA_SECRET_KEY)
 market_stream: AlpacaMarketStream | None = None
@@ -249,6 +250,14 @@ async def add_symbol(
     symbol: str, device_id: str = Depends(get_device_id), session: AsyncSession = Depends(get_session)
 ) -> dict:
     symbol = symbol.upper()
+
+    count = (
+        await session.execute(
+            select(func.count()).select_from(WatchlistSymbol).where(WatchlistSymbol.device_id == device_id)
+        )
+    ).scalar_one()
+    if count >= _MAX_WATCHLIST_SYMBOLS:
+        raise HTTPException(status_code=400, detail=f"watchlist limit reached ({_MAX_WATCHLIST_SYMBOLS} symbols max)")
 
     bars = await asyncio.to_thread(historical_bars.get_recent_bars, symbol, parse_timeframe("1Day"), 1)
     if not bars:

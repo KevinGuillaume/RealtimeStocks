@@ -35,7 +35,10 @@ function App() {
       <AlertToast />
 
       <header className="flex shrink-0 items-center gap-4 border-b border-[var(--stx-divider)] px-4 py-3">
-        <span className="flex-1 text-lg font-semibold">Market Alerts and Watch</span>
+        <div className="flex-1">
+          <div className="text-lg font-semibold leading-tight">Market Alerts and Watch</div>
+          <div className="text-xs text-[var(--stx-text-dim)]">Live prices, instant alerts, zero refreshing.</div>
+        </div>
         <span
           className={`shrink-0 rounded px-2.5 py-1 text-xs font-medium ${
             status === "open"

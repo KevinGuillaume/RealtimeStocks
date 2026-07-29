@@ -9,9 +9,10 @@ from config import ALPACA_API_KEY, ALPACA_SECRET_KEY, FRONTEND_URL, SLACK_WEBHOO
 from db import SessionLocal, engine, get_session
 from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from models import Alert, WatchlistSymbol
+from models import Alert, LastPrice, WatchlistSymbol
 from slack_notify import notify_alert_triggered
 from sqlalchemy import delete, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +26,15 @@ market_stream: AlpacaMarketStream | None = None
 # alert mutation so the hot tick path (on_tick, below) never touches the DB.
 _active_alerts_cache: dict[str, list[dict]] = {}
 _alert_queue: asyncio.Queue = asyncio.Queue()
+
+# symbol -> {"price": float, "timestamp": iso str}, updated on every trade
+# tick (cheap dict write, no DB — same non-blocking constraint as
+# _active_alerts_cache) and periodically flushed to last_prices by
+# flush_last_prices_worker so a fresh page load has a price to show before
+# the first live tick arrives, and it survives restarts.
+_last_price_cache: dict[str, dict] = {}
+_dirty_last_prices: set[str] = set()
+_LAST_PRICE_FLUSH_INTERVAL = 5.0
 
 
 async def get_device_id(x_device_id: str | None = Header(default=None)) -> str:
@@ -87,7 +97,13 @@ def on_tick(message: dict) -> None:
     alerts are just handed off to the main event loop's queue, where
     alert_fire_worker does the real (async) work.
     """
-    if message.get("type") != "trade" or market_stream is None or market_stream._loop is None:
+    if message.get("type") != "trade":
+        return
+
+    _last_price_cache[message["symbol"]] = {"price": message["price"], "timestamp": message["timestamp"]}
+    _dirty_last_prices.add(message["symbol"])
+
+    if market_stream is None or market_stream._loop is None:
         return
     alerts = _active_alerts_cache.get(message["symbol"])
     if not alerts:
@@ -95,6 +111,39 @@ def on_tick(message: dict) -> None:
     for alert in alerts:
         if _alert_condition_met(alert, message["price"]):
             market_stream._loop.call_soon_threadsafe(_alert_queue.put_nowait, (alert, message))
+
+
+async def _flush_last_prices() -> None:
+    if not _dirty_last_prices:
+        return
+    symbols = list(_dirty_last_prices)
+    _dirty_last_prices.difference_update(symbols)
+    rows = [
+        {
+            "symbol": symbol,
+            "price": _last_price_cache[symbol]["price"],
+            "traded_at": datetime.fromisoformat(_last_price_cache[symbol]["timestamp"]),
+        }
+        for symbol in symbols
+        if symbol in _last_price_cache
+    ]
+    if not rows:
+        return
+
+    async with SessionLocal() as session:
+        stmt = pg_insert(LastPrice).values(rows)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[LastPrice.symbol],
+            set_={"price": stmt.excluded.price, "traded_at": stmt.excluded.traded_at, "updated_at": func.now()},
+        )
+        await session.execute(stmt)
+        await session.commit()
+
+
+async def flush_last_prices_worker() -> None:
+    while True:
+        await asyncio.sleep(_LAST_PRICE_FLUSH_INTERVAL)
+        await _flush_last_prices()
 
 
 async def alert_fire_worker() -> None:
@@ -132,6 +181,8 @@ async def lifespan(app: FastAPI):
     async with SessionLocal() as session:
         symbols = list((await session.execute(select(WatchlistSymbol.symbol).distinct())).scalars().all())
         await refresh_active_alerts_cache(session)
+        for row in (await session.execute(select(LastPrice))).scalars():
+            _last_price_cache[row.symbol] = {"price": row.price, "timestamp": row.traded_at.isoformat()}
 
     market_stream = AlpacaMarketStream(
         api_key=ALPACA_API_KEY,
@@ -141,10 +192,13 @@ async def lifespan(app: FastAPI):
     )
     market_stream.start()
     worker_task = asyncio.create_task(alert_fire_worker())
+    flush_task = asyncio.create_task(flush_last_prices_worker())
 
     yield
 
     worker_task.cancel()
+    flush_task.cancel()
+    await _flush_last_prices()
     await engine.dispose()
 
 
@@ -185,6 +239,11 @@ async def get_symbols(
     return list(result.scalars().all())
 
 
+@app.get("/prices")
+def get_last_prices() -> dict[str, dict]:
+    return dict(_last_price_cache)
+
+
 @app.post("/symbols")
 async def add_symbol(
     symbol: str, device_id: str = Depends(get_device_id), session: AsyncSession = Depends(get_session)
@@ -195,6 +254,14 @@ async def add_symbol(
     if not bars:
         raise HTTPException(status_code=400, detail=f"no price data for {symbol!r} — check the ticker")
 
+    if symbol not in _last_price_cache:
+        last_bar = bars[-1]
+        _last_price_cache[symbol] = {
+            "price": last_bar["close"],
+            "timestamp": datetime.fromtimestamp(last_bar["time"], tz=timezone.utc).isoformat(),
+        }
+        _dirty_last_prices.add(symbol)
+
     session.add(WatchlistSymbol(symbol=symbol, device_id=device_id))
     try:
         await session.commit()
@@ -203,7 +270,7 @@ async def add_symbol(
         raise HTTPException(status_code=409, detail=f"{symbol} already in watchlist")
 
     await asyncio.to_thread(market_stream.add_symbols, symbol)
-    return {"symbol": symbol}
+    return {"symbol": symbol, "last_price": _last_price_cache.get(symbol)}
 
 
 @app.delete("/symbols/{symbol}")

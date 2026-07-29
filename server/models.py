@@ -19,6 +19,21 @@ class WatchlistSymbol(Base):
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class LastPrice(Base):
+    """Most recent trade price per symbol, periodically flushed from the
+    in-memory cache in main.py so a fresh page load (or a cold server
+    restart) has something to show before the next live tick arrives."""
+
+    __tablename__ = "last_prices"
+
+    symbol: Mapped[str] = mapped_column(String(10), primary_key=True)
+    price: Mapped[float] = mapped_column(Float)
+    traded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Alert(Base):
     __tablename__ = "alerts"
 

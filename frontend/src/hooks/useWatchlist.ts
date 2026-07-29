@@ -1,5 +1,7 @@
 import { useCallback, useEffect } from "react";
+import * as pricesApi from "../api/prices";
 import * as watchlistApi from "../api/watchlist";
+import { symbolMessageReceived } from "../store/marketDataSlice";
 import { useAppDispatch } from "../store/hooks";
 import {
   addWatchlistSymbol,
@@ -8,18 +10,23 @@ import {
   setWatchlist,
 } from "../store/watchlistSlice";
 
+function seedLastPrice(symbol: string, entry: pricesApi.LastPriceEntry) {
+  return symbolMessageReceived({ type: "trade", symbol, price: entry.price, size: 0, timestamp: entry.timestamp });
+}
+
 export function useWatchlist() {
   const dispatch = useAppDispatch();
 
   const addSymbol = useCallback(
     async (symbol: string) => {
       const added = await watchlistApi.addSymbol(symbol);
-      dispatch(addWatchlistSymbol(added));
+      dispatch(addWatchlistSymbol(added.symbol));
+      if (added.last_price) dispatch(seedLastPrice(added.symbol, added.last_price));
 
       watchlistApi
-        .fetchOpeningPrice(added)
+        .fetchOpeningPrice(added.symbol)
         .then((price) => {
-          if (price !== null) dispatch(setReferencePrice({ symbol: added, price }));
+          if (price !== null) dispatch(setReferencePrice({ symbol: added.symbol, price }));
         })
         .catch(() => {});
     },
@@ -52,6 +59,14 @@ export function useWatchlist() {
             })
             .catch(() => {});
         });
+      })
+      .catch(() => {});
+
+    pricesApi
+      .fetchLastPrices()
+      .then((prices) => {
+        if (cancelled) return;
+        Object.entries(prices).forEach(([symbol, entry]) => dispatch(seedLastPrice(symbol, entry)));
       })
       .catch(() => {});
 

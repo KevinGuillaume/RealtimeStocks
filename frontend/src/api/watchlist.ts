@@ -1,6 +1,12 @@
 import { type ApiConfig, defaultApiConfig } from "./config";
 import { fetchBars } from "./bars";
 import { apiFetch, throwOnError } from "./http";
+import type { LastPriceEntry } from "./prices";
+
+export interface AddSymbolResult {
+  symbol: string;
+  last_price: LastPriceEntry | null;
+}
 
 export async function fetchWatchlist(config: ApiConfig = defaultApiConfig): Promise<string[]> {
   const res = await apiFetch(`${config.baseUrl}/symbols`);
@@ -8,11 +14,10 @@ export async function fetchWatchlist(config: ApiConfig = defaultApiConfig): Prom
   return res.json();
 }
 
-export async function addSymbol(symbol: string, config: ApiConfig = defaultApiConfig): Promise<string> {
+export async function addSymbol(symbol: string, config: ApiConfig = defaultApiConfig): Promise<AddSymbolResult> {
   const res = await apiFetch(`${config.baseUrl}/symbols?symbol=${encodeURIComponent(symbol)}`, { method: "POST" });
   await throwOnError(res);
-  const { symbol: added } = (await res.json()) as { symbol: string };
-  return added;
+  return res.json();
 }
 
 export async function removeSymbol(symbol: string, config: ApiConfig = defaultApiConfig): Promise<void> {

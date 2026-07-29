@@ -1,19 +1,10 @@
-import { useEffect } from "react";
 import { dismissAlertEvent as dismissAlertEventAction } from "../store/alertsSlice";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import { formatPrice } from "../utilities/format";
 
-const AUTO_DISMISS_MS = 6000;
-
 export function AlertToast() {
   const alertEvents = useAppSelector((state) => state.alerts.alertEvents);
   const dispatch = useAppDispatch();
-
-  useEffect(() => {
-    if (alertEvents.length === 0) return;
-    const timer = setTimeout(() => dispatch(dismissAlertEventAction(0)), AUTO_DISMISS_MS);
-    return () => clearTimeout(timer);
-  }, [alertEvents, dispatch]);
 
   if (alertEvents.length === 0) return null;
 

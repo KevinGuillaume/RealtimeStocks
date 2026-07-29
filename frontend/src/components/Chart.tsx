@@ -1,8 +1,36 @@
 import { useEffect, useRef, useState } from "react";
-import { CandlestickSeries, createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from "lightweight-charts";
+import {
+  CandlestickSeries,
+  createChart,
+  TickMarkType,
+  type IChartApi,
+  type ISeriesApi,
+  type UTCTimestamp,
+} from "lightweight-charts";
 import { fetchBars } from "../api/bars";
 import { useAppSelector } from "../store/hooks";
 import { formatPrice } from "../utilities/format";
+
+// lightweight-charts formats its time axis in UTC by default, regardless of
+// the browser's timezone — these render every tick/crosshair label in local
+// time instead, using the same UTC-seconds `time` values already in use.
+function localTickFormatter(time: UTCTimestamp, tickMarkType: TickMarkType): string {
+  const date = new Date(time * 1000);
+  switch (tickMarkType) {
+    case TickMarkType.Year:
+      return date.toLocaleDateString([], { year: "numeric" });
+    case TickMarkType.Month:
+      return date.toLocaleDateString([], { month: "short" });
+    case TickMarkType.DayOfMonth:
+      return date.toLocaleDateString([], { month: "short", day: "numeric" });
+    default:
+      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+}
+
+function localCrosshairFormatter(time: UTCTimestamp): string {
+  return new Date(time * 1000).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+}
 
 interface ChartProps {
   symbol: string;
@@ -41,7 +69,8 @@ export function Chart({ symbol }: ChartProps) {
       grid: { vertLines: { color: "rgba(233,233,237,0.06)" }, horzLines: { color: "rgba(233,233,237,0.06)" } },
       width: containerRef.current.clientWidth,
       height: containerRef.current.clientHeight,
-      timeScale: { timeVisible: true, secondsVisible: false },
+      localization: { timeFormatter: localCrosshairFormatter },
+      timeScale: { timeVisible: true, secondsVisible: false, tickMarkFormatter: localTickFormatter },
     });
     const series = chart.addSeries(CandlestickSeries, {
       upColor: "#7fd4a8",

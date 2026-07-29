@@ -50,6 +50,11 @@ function App() {
         </span>
       </header>
 
+      <div className="shrink-0 border-b border-[var(--stx-divider)] bg-[var(--stx-surface)] px-4 py-1.5 text-[11px] text-[var(--stx-text-dim)]">
+        Prices come from Alpaca's free IEX feed, not the full consolidated tape, so quotes can lag the broader
+        market by a few seconds/minutes.
+      </div>
+
       <HelpPanel />
 
       {watchlist.length === 0 || !selectedSymbol ? (
